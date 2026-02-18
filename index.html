@@ -1,0 +1,868 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Candy Forge: Siege Line</title>
+  <style>
+    :root {
+      --bg-a: #131019;
+      --bg-b: #29162b;
+      --panel-a: rgba(34, 18, 36, 0.9);
+      --panel-b: rgba(11, 16, 28, 0.85);
+      --text: #f8ebd9;
+      --muted: #ccb7a7;
+      --accent: #ffcc70;
+      --danger: #ff5c6b;
+      --good: #6ee1a6;
+      --cell: 56px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      min-height: 100%;
+      font-family: 'Trebuchet MS', 'Fira Sans', 'Segoe UI', sans-serif;
+      background:
+        radial-gradient(circle at 18% 10%, #3f2438 0%, transparent 35%),
+        radial-gradient(circle at 80% 90%, #1d2f55 0%, transparent 40%),
+        linear-gradient(150deg, var(--bg-a), var(--bg-b));
+      color: var(--text);
+    }
+
+    #app {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.9rem;
+      padding: 1rem;
+    }
+
+    h1 {
+      margin: 0;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-family: 'Arial Black', 'Verdana', 'Impact', sans-serif;
+      font-size: clamp(1.3rem, 2.5vw, 2rem);
+      text-shadow: 0 2px 10px rgba(255, 170, 80, 0.35);
+    }
+
+    #tagline {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-align: center;
+    }
+
+    #hud {
+      width: min(92vw, 640px);
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.6rem;
+      margin-top: 0.2rem;
+    }
+
+    .card {
+      background: var(--panel-a);
+      border: 1px solid rgba(255, 221, 181, 0.18);
+      border-radius: 12px;
+      padding: 0.55rem 0.75rem;
+      text-align: center;
+      box-shadow: inset 0 0 18px rgba(255, 200, 120, 0.15);
+    }
+
+    .card .label {
+      color: var(--muted);
+      font-size: 0.73rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+
+    .card .value {
+      margin-top: 0.2rem;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    #combo {
+      height: 1.2rem;
+      font-size: 0.9rem;
+      color: var(--accent);
+      text-align: center;
+      min-height: 1.1rem;
+    }
+
+    #board-wrap {
+      position: relative;
+      width: min(92vw, 540px);
+      aspect-ratio: 1 / 1;
+      border-radius: 20px;
+      padding: 0.85rem;
+      background: linear-gradient(145deg, rgba(65, 23, 31, 0.35), rgba(15, 22, 38, 0.45));
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.4);
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255, 201, 134, 0.2);
+    }
+
+    #board {
+      --cell-size: var(--cell);
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border-radius: 14px;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+      background: linear-gradient(150deg, #23102388, #111c34cc);
+      box-shadow: inset 0 0 26px rgba(255, 150, 60, 0.2);
+      outline: 1px solid rgba(255, 240, 200, 0.12);
+    }
+
+    .candy {
+      position: absolute;
+      width: calc(var(--cell-size) * 0.88);
+      height: calc(var(--cell-size) * 0.88);
+      border-radius: 20%;
+      display: grid;
+      place-items: center;
+      font-size: calc(var(--cell-size) * 0.56);
+      line-height: 1;
+      transform-origin: center;
+      transition: background-color 140ms, border-color 140ms, box-shadow 140ms;
+      cursor: pointer;
+      box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.5), inset 0 -10px 18px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.2);
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      will-change: transform;
+      background-clip: padding-box;
+    }
+
+    .glyph {
+      display: inline-flex;
+      width: 100%;
+      justify-content: center;
+      align-items: center;
+      pointer-events: none;
+      user-select: none;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.65));
+    }
+
+    .candy.selected {
+      outline: 3px solid rgba(255, 235, 130, 0.95);
+      outline-offset: -3px;
+      box-shadow: 0 0 18px rgba(255, 220, 130, 0.75), inset 0 0 0 2px rgba(255, 255, 255, 0.65);
+    }
+
+    .candy.matched {
+      pointer-events: none;
+    }
+
+    .candy.matched .glyph {
+      animation: match-pop 220ms ease-in forwards;
+    }
+
+    @keyframes match-pop {
+      0% { transform: scale(1); opacity: 1; }
+      90% { transform: scale(0.2) rotate(-6deg); opacity: 0.35; }
+      100% { transform: scale(0.02) rotate(6deg); opacity: 0; }
+    }
+
+    .type-fire {
+      background: linear-gradient(140deg, #ff6666, #a80000);
+    }
+
+    .type-ice {
+      background: linear-gradient(140deg, #66baff, #0058a8);
+    }
+
+    .type-poison {
+      background: linear-gradient(140deg, #67eea7, #04794f);
+    }
+
+    .type-lightning {
+      background: linear-gradient(140deg, #ffe45b, #9a7600);
+    }
+
+    .type-shadow {
+      background: linear-gradient(140deg, #d48dff, #4b1f8c);
+    }
+
+    .type-siege {
+      background: linear-gradient(140deg, #f08b4d, #8a2a00);
+    }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(10, 10, 18, 0.82);
+      backdrop-filter: blur(4px);
+      border-radius: 14px;
+      border: 1px solid rgba(255, 204, 128, 0.22);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      flex-direction: column;
+      z-index: 6;
+      animation: fade-up 250ms ease;
+      padding: 1rem;
+    }
+
+    @keyframes fade-up {
+      0% { opacity: 0; transform: translateY(8px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    #overlay h2 {
+      margin: 0;
+      font-size: 1.3rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #ffe4b3;
+    }
+
+    #overlay p {
+      margin: 0.45rem 0 1rem;
+      color: var(--muted);
+    }
+
+    #overlay .primary {
+      padding: 0.65rem 1rem;
+      border: 0;
+      border-radius: 999px;
+      background: linear-gradient(120deg, #f5c56a, #de8640);
+      color: #3b1808;
+      font-weight: 800;
+      font-size: 1rem;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      text-transform: uppercase;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.35);
+    }
+
+    #footer {
+      color: var(--muted);
+      font-size: 0.76rem;
+      text-align: center;
+      margin-top: 0.6rem;
+    }
+
+    .hidden { display: none !important; }
+    .overlay-visible { display: flex !important; }
+
+    @media (max-width: 520px) {
+      #hud {
+        grid-template-columns: 1fr;
+      }
+
+      #board-wrap {
+        padding: 0.65rem;
+      }
+
+      .candy {
+        border-width: 1px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <h1>Candy Forge: Siege Line</h1>
+    <p id="tagline">Swipe or click two adjacent candies to forge a line. Only matches made by your move are valid.</p>
+
+    <section id="hud">
+      <div class="card">
+        <div class="label">Score</div>
+        <div class="value" id="scoreVal">0</div>
+      </div>
+      <div class="card">
+        <div class="label">Moves</div>
+        <div class="value" id="movesVal">30</div>
+      </div>
+      <div class="card">
+        <div class="label">High Score</div>
+        <div class="value" id="highVal">0</div>
+      </div>
+    </section>
+
+    <div id="combo" aria-live="polite"></div>
+
+    <div id="board-wrap">
+      <div id="board" aria-label="Candy forge game board"></div>
+      <div id="overlay">
+        <h2>Forge Failed</h2>
+        <p id="finalScore">Final Score: 0</p>
+        <button class="primary" id="restartBtn" type="button">Restart</button>
+      </div>
+    </div>
+
+    <p id="footer">Match scoring: 3 = 100, 4 = 200, 5 = 500. Cascades multiply each wave.</p>
+  </main>
+
+  <script>
+    const SIZE = 9;
+    const MOVES_START = 30;
+    const SWAP_DURATION = 185;
+    const FALL_DURATION = 250;
+    const MATCH_DURATION = 220;
+    const ROW_SIZE = 1 / SIZE;
+
+    const CANDY_TYPES = [
+      { id: 'fire', label: 'Fire', emoji: '🔴' },
+      { id: 'ice', label: 'Ice', emoji: '🔵' },
+      { id: 'poison', label: 'Poison', emoji: '🟢' },
+      { id: 'lightning', label: 'Lightning', emoji: '🟡' },
+      { id: 'shadow', label: 'Shadow', emoji: '🟣' },
+      { id: 'siege', label: 'Siege', emoji: '🟠' }
+    ];
+
+    const boardEl = document.getElementById('board');
+    const scoreEl = document.getElementById('scoreVal');
+    const movesEl = document.getElementById('movesVal');
+    const highEl = document.getElementById('highVal');
+    const comboEl = document.getElementById('combo');
+    const overlay = document.getElementById('overlay');
+    const finalScoreEl = document.getElementById('finalScore');
+    const restartBtn = document.getElementById('restartBtn');
+
+    const STORAGE_KEY = 'candy-forge-proto-highscore';
+
+    let grid = [];
+    let pieces = [];
+    let pieceById = new Map();
+    let nextPieceId = 0;
+    let selectedPiece = null;
+    let isAnimating = false;
+    let movesLeft = MOVES_START;
+    let score = 0;
+    let gameOver = false;
+    let highScore = Number(localStorage.getItem(STORAGE_KEY) || 0);
+    let cellSize = 56;
+
+    let rafHandle = 0;
+
+    function randType() {
+      return Math.floor(Math.random() * CANDY_TYPES.length);
+    }
+
+    function clamp01(value) {
+      return Math.max(0, Math.min(1, value));
+    }
+
+    function easeInOutCubic(t) {
+      return t < 0.5
+        ? 4 * t * t * t
+        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    function createPiece(type, row = 0, col = 0) {
+      const definition = CANDY_TYPES[type];
+      const el = document.createElement('button');
+      const glyph = document.createElement('span');
+      el.className = `candy type-${definition.id}`;
+      el.type = 'button';
+      el.setAttribute('aria-label', `${definition.label} candy`);
+      glyph.className = 'glyph';
+      glyph.textContent = definition.emoji;
+      el.appendChild(glyph);
+
+      const piece = {
+        id: nextPieceId++,
+        type,
+        row,
+        col,
+        x: col,
+        y: row,
+        fromX: col,
+        fromY: row,
+        toX: col,
+        toY: row,
+        startTime: 0,
+        duration: 0,
+        moving: false,
+        matchPending: false,
+        el
+      };
+
+      el.dataset.id = piece.id;
+      updatePieceCellData(piece, row, col);
+      pieceById.set(piece.id, piece);
+      return piece;
+    }
+
+    function updatePieceCellData(piece, row, col) {
+      piece.row = row;
+      piece.col = col;
+      piece.el.dataset.row = row;
+      piece.el.dataset.col = col;
+    }
+
+    function setTransform(piece) {
+      piece.el.style.transform = `translate(${piece.x * cellSize}px, ${piece.y * cellSize}px)`;
+    }
+
+    function recalculateCellSize() {
+      const wrapRect = boardEl.getBoundingClientRect();
+      cellSize = Math.floor(wrapRect.width / SIZE);
+      boardEl.style.setProperty('--cell-size', `${cellSize}px`);
+      pieces.forEach(setTransform);
+    }
+
+    function movePieceTo(piece, targetRow, targetCol, duration = 0) {
+      piece.fromX = piece.x;
+      piece.fromY = piece.y;
+      piece.toX = targetCol;
+      piece.toY = targetRow;
+      piece.startTime = performance.now();
+      piece.duration = Math.max(duration, 1);
+      piece.moving = true;
+      return new Promise(resolve => {
+        requestAnimationFrame(function wait() {
+          if (!piece.moving) {
+            resolve();
+            return;
+          }
+          requestAnimationFrame(wait);
+        });
+      });
+    }
+
+    async function waitForIdle() {
+      let guard = 0;
+      while (guard < 420) {
+        const stillMoving = pieces.some(piece => piece.moving || piece.matchPending);
+        if (!stillMoving) return;
+        guard += 1;
+        await nextFrame();
+      }
+    }
+
+    function nextFrame() {
+      return new Promise(resolve => requestAnimationFrame(() => resolve()));
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function clearMatchMarks() {
+      for (const piece of pieces) {
+        piece.el.classList.remove('matched');
+      }
+    }
+
+    function buildRandomGrid() {
+      let candidate;
+      while (true) {
+        candidate = Array.from({ length: SIZE }, () => new Array(SIZE).fill(null));
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            candidate[r][c] = createPiece(randType(), r, c);
+          }
+        }
+
+        pieces = [];
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            pieces.push(candidate[r][c]);
+          }
+        }
+
+        if (findMatches(candidate).length === 0) {
+          break;
+        }
+
+        pieces.forEach(piece => piece.el.remove());
+        pieceById = new Map();
+        nextPieceId = 0;
+      }
+      return candidate;
+    }
+
+    function setupBoard() {
+      boardEl.innerHTML = '';
+      pieceById = new Map();
+      nextPieceId = 0;
+      grid = buildRandomGrid();
+      pieces.forEach(piece => {
+        boardEl.appendChild(piece.el);
+        piece.x = piece.col;
+        piece.y = piece.row;
+        setTransform(piece);
+      });
+    }
+
+    function findMatches(board = grid) {
+      const matches = [];
+
+      // Horizontal lines
+      for (let r = 0; r < SIZE; r++) {
+        let c = 0;
+        while (c < SIZE) {
+          const piece = board[r][c];
+          if (!piece) {
+            c += 1;
+            continue;
+          }
+          let end = c;
+          while (end + 1 < SIZE && board[r][end + 1] && board[r][end + 1].type === piece.type) {
+            end += 1;
+          }
+          const len = end - c + 1;
+          if (len >= 3) {
+            const cells = [];
+            for (let cc = c; cc <= end; cc++) {
+              cells.push({ r, c: cc });
+            }
+            matches.push({ cells, len, dir: 'h' });
+          }
+          c = end + 1;
+        }
+      }
+
+      // Vertical lines
+      for (let c = 0; c < SIZE; c++) {
+        let r = 0;
+        while (r < SIZE) {
+          const piece = board[r][c];
+          if (!piece) {
+            r += 1;
+            continue;
+          }
+          let end = r;
+          while (end + 1 < SIZE && board[end + 1][c] && board[end + 1][c].type === piece.type) {
+            end += 1;
+          }
+          const len = end - r + 1;
+          if (len >= 3) {
+            const cells = [];
+            for (let rr = r; rr <= end; rr++) {
+              cells.push({ r: rr, c });
+            }
+            matches.push({ cells, len, dir: 'v' });
+          }
+          r = end + 1;
+        }
+      }
+
+      return matches;
+    }
+
+    function scoreForLength(len) {
+      if (len >= 5) return 500;
+      if (len === 4) return 200;
+      return 100;
+    }
+
+    function updateHud() {
+      scoreEl.textContent = score;
+      movesEl.textContent = movesLeft;
+      highEl.textContent = highScore;
+    }
+
+    function scoreAndClearMatches(matches, cascade) {
+      const unique = new Map();
+      for (const match of matches) {
+        for (const cell of match.cells) {
+          const piece = grid[cell.r][cell.c];
+          if (piece) {
+            unique.set(piece.id, piece);
+          }
+        }
+      }
+
+      let gained = 0;
+      for (const match of matches) {
+        gained += scoreForLength(match.len);
+      }
+      gained *= cascade;
+      score += gained;
+      highScore = Math.max(score, highScore);
+
+      updateHud();
+      const matched = [...unique.values()];
+      for (const piece of matched) {
+        piece.el.classList.add('matched');
+        piece.matchPending = true;
+      }
+
+      return matched;
+    }
+
+    function removeMatchedPieces(matchedPieces) {
+      for (const piece of matchedPieces) {
+        const { row, col } = piece;
+        if (row >= 0 && row < SIZE && col >= 0 && col < SIZE && grid[row][col] === piece) {
+          grid[row][col] = null;
+        }
+        piece.el.remove();
+        piece.matchPending = false;
+      }
+
+      pieces = pieces.filter(piece => piece.el.isConnected);
+      clearMatchMarks();
+    }
+
+    async function applyGravityAndSpawn() {
+      for (let c = 0; c < SIZE; c++) {
+        const survivors = [];
+
+        for (let r = SIZE - 1; r >= 0; r--) {
+          if (grid[r][c]) {
+            survivors.push(grid[r][c]);
+          }
+        }
+
+        for (let r = 0; r < SIZE; r++) {
+          grid[r][c] = null;
+        }
+
+      let write = SIZE - 1;
+      for (let i = 0; i < survivors.length; i++) {
+        const piece = survivors[i];
+          const target = write - i;
+          const oldRow = piece.row;
+          const oldCol = piece.col;
+          grid[target][c] = piece;
+          updatePieceCellData(piece, target, c);
+          if (piece.x !== c || piece.y !== target) {
+            movePieceTo(piece, target, c, FALL_DURATION);
+          }
+          if (piece.x !== c) {
+            piece.x = c;
+            setTransform(piece);
+          }
+          piece.y = target;
+          if (oldRow !== target || oldCol !== c) {
+            // if already there, no visual diff
+          }
+          write -= 1;
+        }
+
+        const firstTargetRow = write;
+        for (let rr = firstTargetRow; rr >= 0; rr--) {
+          const startRow = -1 - (firstTargetRow - rr);
+          const piece = createPiece(randType(), startRow, c);
+          pieces.push(piece);
+          boardEl.appendChild(piece.el);
+          piece.x = c;
+          piece.y = startRow;
+          setTransform(piece);
+          updatePieceCellData(piece, rr, c);
+          grid[rr][c] = piece;
+          piece.moving = false;
+          movePieceTo(piece, rr, c, FALL_DURATION);
+          piece.y = rr;
+        }
+      }
+
+      await waitForIdle();
+      await sleep(20);
+    }
+
+    async function resolveMatches() {
+      let cascade = 1;
+      while (true) {
+        const matches = findMatches();
+        if (matches.length === 0) {
+          break;
+        }
+
+        const matchedPieces = scoreAndClearMatches(matches, cascade);
+        comboEl.textContent = cascade > 1 ? `Chain x${cascade}` : '';
+        await sleep(MATCH_DURATION);
+        removeMatchedPieces(matchedPieces);
+        await applyGravityAndSpawn();
+        await sleep(45);
+        cascade += 1;
+      }
+
+      comboEl.textContent = '';
+      clearMatchMarks();
+    }
+
+    function swapInGrid(r1, c1, r2, c2) {
+      const first = grid[r1][c1];
+      const second = grid[r2][c2];
+      if (!first || !second) return;
+
+      grid[r1][c1] = second;
+      grid[r2][c2] = first;
+
+      updatePieceCellData(first, r2, c2);
+      updatePieceCellData(second, r1, c1);
+      movePieceTo(first, r2, c2, SWAP_DURATION);
+      movePieceTo(second, r1, c1, SWAP_DURATION);
+      selectedPiece = null;
+
+      if (matchesAfterSwap()) {
+        return;
+      }
+
+      const reverse = () => {
+        grid[r1][c1] = first;
+        grid[r2][c2] = second;
+        updatePieceCellData(first, r1, c1);
+        updatePieceCellData(second, r2, c2);
+      };
+
+      reverse();
+      movePieceTo(first, r1, c1, SWAP_DURATION);
+      movePieceTo(second, r2, c2, SWAP_DURATION);
+      return false;
+    }
+
+    function matchesAfterSwap() {
+      const has = findMatches().length > 0;
+      return has;
+    }
+
+    async function attemptSwap(targetPiece) {
+      if (!selectedPiece || !targetPiece || gameOver || isAnimating) return;
+      const r1 = Number(selectedPiece.dataset.row || selectedPiece.row);
+      const c1 = Number(selectedPiece.dataset.col || selectedPiece.col);
+      const r2 = Number(targetPiece.dataset.row || targetPiece.row);
+      const c2 = Number(targetPiece.dataset.col || targetPiece.col);
+
+      const same = selectedPiece === targetPiece;
+      if (same) {
+        selectedPiece.classList.remove('selected');
+        selectedPiece = null;
+        return;
+      }
+
+      const dist = Math.abs(r1 - r2) + Math.abs(c1 - c2);
+      if (dist !== 1) {
+        selectedPiece.classList.remove('selected');
+        selectedPiece = null;
+        targetPiece.classList.add('selected');
+        selectedPiece = targetPiece;
+        return;
+      }
+
+      const first = grid[r1][c1];
+      const second = grid[r2][c2];
+
+      isAnimating = true;
+      selectedPiece.classList.remove('selected');
+
+      const firstBefore = first;
+      const secondBefore = second;
+
+      swapInGrid(r1, c1, r2, c2);
+      await waitForIdle();
+
+      const hasMatch = findMatches().length > 0;
+
+      if (!hasMatch) {
+        swapInGrid(r1, c1, r2, c2);
+        await waitForIdle();
+        isAnimating = false;
+        selectedPiece = null;
+        return;
+      }
+
+      movesLeft = Math.max(0, movesLeft - 1);
+      updateHud();
+      await resolveMatches();
+
+      if (movesLeft <= 0) {
+        localStorage.setItem(STORAGE_KEY, String(highScore));
+        gameOver = true;
+        finalScoreEl.textContent = `Final Score: ${score}`;
+        overlay.classList.add('overlay-visible');
+      }
+
+      isAnimating = false;
+      selectedPiece = null;
+    }
+
+    function onBoardPointerDown(event) {
+      if (isAnimating || gameOver) return;
+      const target = event.target.closest('.candy');
+      if (!target || !boardEl.contains(target)) return;
+      const pieceId = Number(target.dataset.id);
+      const clicked = pieceById.get(pieceId);
+      if (!clicked || pieceId !== clicked.id) return;
+
+      if (!selectedPiece) {
+        selectedPiece = target;
+        target.classList.add('selected');
+        return;
+      }
+
+      if (selectedPiece === target) {
+        selectedPiece.classList.remove('selected');
+        selectedPiece = null;
+        return;
+      }
+
+      void attemptSwap(target);
+    }
+
+    function refreshHighScore() {
+      highScore = Number(localStorage.getItem(STORAGE_KEY) || 0);
+      highEl.textContent = highScore;
+    }
+
+    function init() {
+      gameOver = false;
+      movesLeft = MOVES_START;
+      score = 0;
+      selectedPiece = null;
+      isAnimating = true;
+      overlay.classList.remove('overlay-visible');
+      comboEl.textContent = '';
+      pieceById = new Map();
+      nextPieceId = 0;
+      refreshHighScore();
+      setupBoard();
+      recalculateCellSize();
+      updateHud();
+      isAnimating = false;
+    }
+
+    function render() {
+      for (const piece of pieces) {
+        if (piece.moving) {
+          const elapsed = performance.now() - piece.startTime;
+          const t = clamp01(elapsed / piece.duration);
+          const eased = easeInOutCubic(t);
+          piece.x = piece.fromX + (piece.toX - piece.fromX) * eased;
+          piece.y = piece.fromY + (piece.toY - piece.fromY) * eased;
+
+          if (t >= 1) {
+            piece.moving = false;
+            piece.x = piece.toX;
+            piece.y = piece.toY;
+          }
+          setTransform(piece);
+        } else if (!piece.matchPending && piece.y !== piece.row) {
+          piece.y = piece.row;
+          piece.x = piece.col;
+          setTransform(piece);
+        } else if (!piece.matchPending) {
+          setTransform(piece);
+        }
+      }
+
+      rafHandle = requestAnimationFrame(render);
+    }
+
+    function setup() {
+      init();
+      boardEl.addEventListener('pointerdown', onBoardPointerDown);
+      restartBtn.addEventListener('click', init);
+      window.addEventListener('resize', recalculateCellSize);
+      render();
+    }
+
+    setup();
+  </script>
+</body>
+</html>
