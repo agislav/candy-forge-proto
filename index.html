@@ -622,26 +622,15 @@
           grid[r][c] = null;
         }
 
-      let write = SIZE - 1;
-      for (let i = 0; i < survivors.length; i++) {
-        const piece = survivors[i];
-          const target = write - i;
-          const oldRow = piece.row;
-          const oldCol = piece.col;
-          grid[target][c] = piece;
-          updatePieceCellData(piece, target, c);
-          if (piece.x !== c || piece.y !== target) {
-            movePieceTo(piece, target, c, FALL_DURATION);
+        let write = SIZE - 1;
+        for (let i = 0; i < survivors.length; i++) {
+          const piece = survivors[i];
+          grid[write][c] = piece;
+          if (piece.row !== write || piece.col !== c) {
+            updatePieceCellData(piece, write, c);
+            movePieceTo(piece, write, c, FALL_DURATION);
           }
-          if (piece.x !== c) {
-            piece.x = c;
-            setTransform(piece);
-          }
-          piece.y = target;
-          if (oldRow !== target || oldCol !== c) {
-            // if already there, no visual diff
-          }
-          write -= 1;
+          write--;
         }
 
         const firstTargetRow = write;
@@ -698,36 +687,14 @@
       updatePieceCellData(second, r1, c1);
       movePieceTo(first, r2, c2, SWAP_DURATION);
       movePieceTo(second, r1, c1, SWAP_DURATION);
-      selectedPiece = null;
-
-      if (matchesAfterSwap()) {
-        return;
-      }
-
-      const reverse = () => {
-        grid[r1][c1] = first;
-        grid[r2][c2] = second;
-        updatePieceCellData(first, r1, c1);
-        updatePieceCellData(second, r2, c2);
-      };
-
-      reverse();
-      movePieceTo(first, r1, c1, SWAP_DURATION);
-      movePieceTo(second, r2, c2, SWAP_DURATION);
-      return false;
-    }
-
-    function matchesAfterSwap() {
-      const has = findMatches().length > 0;
-      return has;
     }
 
     async function attemptSwap(targetPiece) {
       if (!selectedPiece || !targetPiece || gameOver || isAnimating) return;
-      const r1 = Number(selectedPiece.dataset.row || selectedPiece.row);
-      const c1 = Number(selectedPiece.dataset.col || selectedPiece.col);
-      const r2 = Number(targetPiece.dataset.row || targetPiece.row);
-      const c2 = Number(targetPiece.dataset.col || targetPiece.col);
+      const r1 = Number(selectedPiece.dataset.row);
+      const c1 = Number(selectedPiece.dataset.col);
+      const r2 = Number(targetPiece.dataset.row);
+      const c2 = Number(targetPiece.dataset.col);
 
       const same = selectedPiece === targetPiece;
       if (same) {
@@ -745,22 +712,18 @@
         return;
       }
 
-      const first = grid[r1][c1];
-      const second = grid[r2][c2];
-
       isAnimating = true;
       selectedPiece.classList.remove('selected');
 
-      const firstBefore = first;
-      const secondBefore = second;
-
+      // Swap forward
       swapInGrid(r1, c1, r2, c2);
       await waitForIdle();
 
       const hasMatch = findMatches().length > 0;
 
       if (!hasMatch) {
-        swapInGrid(r1, c1, r2, c2);
+        // Swap back (reverse)
+        swapInGrid(r2, c2, r1, c1);
         await waitForIdle();
         isAnimating = false;
         selectedPiece = null;
