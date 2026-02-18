@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Match-3 Regression Tests</title>
+  <style>
+    :root {
+      --bg: #120e1a;
+      --ok: #65d9a3;
+      --bad: #ff6f7d;
+      --muted: #b9b0a6;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+      background: linear-gradient(140deg, #21122e, #11141d);
+      color: #f8efdf;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.8rem;
+    }
+
+    h1 {
+      margin: 0;
+      text-transform: uppercase;
+      font-size: 1.1rem;
+      letter-spacing: 0.08em;
+      color: #ffeec8;
+    }
+
+    #gameFrame {
+      width: min(92vw, 560px);
+      aspect-ratio: 1 / 1;
+      border: 1px solid rgba(255, 200, 120, 0.25);
+      border-radius: 12px;
+      background: #070910;
+      box-shadow: 0 15px 45px rgba(0, 0, 0, 0.35);
+    }
+
+    #results {
+      width: min(92vw, 720px);
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 0.5rem;
+    }
+
+    #results li {
+      border-radius: 10px;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(20, 18, 28, 0.72);
+    }
+
+    .pass {
+      border-color: rgba(101, 217, 163, 0.45);
+      color: var(--ok);
+    }
+
+    .fail {
+      border-color: rgba(255, 111, 125, 0.45);
+      color: var(--bad);
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    code {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0 0.2em;
+      border-radius: 4px;
+      font-size: 0.88rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Automated gameplay checks</h1>
+  <iframe id="gameFrame" src="index.html"></iframe>
+  <ul id="results"></ul>
+
+  <script>
+    const SIZE = 9;
+    const frame = document.getElementById('gameFrame');
+    const results = document.getElementById('results');
+    const pending = [];
+
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    function logResult(name, passed, detail = '') {
+      const li = document.createElement('li');
+      li.className = passed ? 'pass' : 'fail';
+      li.innerHTML = `<strong>${passed ? 'PASS' : 'FAIL'}:</strong> ${name}`;
+      if (detail) {
+        const span = document.createElement('div');
+        span.className = 'muted';
+        span.textContent = detail;
+        li.appendChild(span);
+      }
+      results.appendChild(li);
+    }
+
+    function gameDoc() {
+      return frame.contentDocument;
+    }
+
+    function gameWin() {
+      return frame.contentWindow;
+    }
+
+    function waitFor(predicate, timeoutMs = 2000, intervalMs = 30) {
+      return new Promise((resolve, reject) => {
+        const end = performance.now() + timeoutMs;
+        const poll = () => {
+          if (predicate()) {
+            resolve();
+            return;
+          }
+          if (performance.now() >= end) {
+            reject(new Error('Timed out waiting for condition'));
+            return;
+          }
+          setTimeout(poll, intervalMs);
+        };
+        poll();
+      });
+    }
+
+    function getBoardMatrix() {
+      const matrix = Array.from({ length: SIZE }, () => Array.from({ length: SIZE }, () => null));
+      const pieces = Array.from(gameDoc().querySelectorAll('.candy'));
+      for (const piece of pieces) {
+        const row = Number(piece.dataset.row);
+        const col = Number(piece.dataset.col);
+        const glyph = piece.querySelector('.glyph')?.textContent || '';
+        if (Number.isInteger(row) && Number.isInteger(col)) {
+          matrix[row][col] = { id: piece.dataset.id, glyph };
+        }
+      }
+      return matrix;
+    }
+
+    function hasMatch(matrix) {
+      for (let row = 0; row < SIZE; row++) {
+        let run = 1;
+        for (let col = 1; col < SIZE; col++) {
+          const current = matrix[row][col];
+          const previous = matrix[row][col - 1];
+          if (current && previous && current.glyph === previous.glyph) {
+            run += 1;
+            if (run >= 3) return true;
+          } else {
+            run = 1;
+          }
+        }
+      }
+
+      for (let col = 0; col < SIZE; col++) {
+        let run = 1;
+        for (let row = 1; row < SIZE; row++) {
+          const current = matrix[row][col];
+          const previous = matrix[row - 1][col];
+          if (current && previous && current.glyph === previous.glyph) {
+            run += 1;
+            if (run >= 3) return true;
+          } else {
+            run = 1;
+          }
+        }
+      }
+
+      return false;
+    }
+
+    function wouldMoveCreateMatch(matrix, r1, c1, r2, c2) {
+      const clone = matrix.map(row => row.slice());
+      [clone[r1][c1], clone[r2][c2]] = [clone[r2][c2], clone[r1][c1]];
+      return hasMatch(clone);
+    }
+
+    function findAdjacentPair(requireMatch) {
+      const matrix = getBoardMatrix();
+      for (let row = 0; row < SIZE; row++) {
+        for (let col = 0; col < SIZE; col++) {
+          const candidates = [
+            [row + 1, col],
+            [row, col + 1]
+          ];
+
+          for (const [nextRow, nextCol] of candidates) {
+            if (nextRow >= SIZE || nextCol >= SIZE) continue;
+            if (!matrix[nextRow]?.[nextCol] || !matrix[row]?.[col]) continue;
+            const makesMatch = wouldMoveCreateMatch(matrix, row, col, nextRow, nextCol);
+            if (makesMatch === requireMatch) {
+              return { r1: row, c1: col, r2: nextRow, c2: nextCol };
+            }
+          }
+        }
+      }
+      return null;
+    }
+
+    function clickPiece(piece) {
+      const evtCtor = gameWin().PointerEvent || gameWin().MouseEvent;
+      const event = new evtCtor('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        view: gameWin()
+      });
+      piece.dispatchEvent(event);
+    }
+
+    function getPiece(row, col) {
+      return gameDoc().querySelector(`.candy[data-row="${row}"][data-col="${col}"]`);
+    }
+
+    async function runValidSwapTest() {
+      const beforeMoves = Number(gameDoc().getElementById('movesVal').textContent);
+      const pair = findAdjacentPair(true);
+      if (!pair) {
+        throw new Error('No valid swap found for valid-move test');
+      }
+
+      const first = getPiece(pair.r1, pair.c1);
+      const second = getPiece(pair.r2, pair.c2);
+      if (!first || !second) {
+        throw new Error('Could not read board pieces for valid swap test');
+      }
+
+      const before = getBoardMatrix();
+      clickPiece(first);
+      clickPiece(second);
+
+      await sleep(1700);
+
+      const afterMoves = Number(gameDoc().getElementById('movesVal').textContent);
+      const moved = afterMoves === beforeMoves - 1;
+      if (!moved) {
+        throw new Error(`Moves did not decrement after valid swap (before=${beforeMoves}, after=${afterMoves})`);
+      }
+
+      const after = getBoardMatrix();
+      const changed = JSON.stringify(before) !== JSON.stringify(after);
+      if (!changed) {
+        throw new Error('Board state did not change after a valid swap');
+      }
+
+      return 'Valid adjacent swap created a match and consumed one move';
+    }
+
+    async function runInvalidSwapTest() {
+      // Restart for deterministic precondition and get fresh board state.
+      if (typeof gameWin().init === 'function') gameWin().init();
+      await sleep(120);
+
+      const pair = findAdjacentPair(false);
+      if (!pair) {
+        throw new Error('No invalid adjacent move found');
+      }
+
+      const first = getPiece(pair.r1, pair.c1);
+      const second = getPiece(pair.r2, pair.c2);
+      if (!first || !second) {
+        throw new Error('Could not read board pieces for invalid swap test');
+      }
+
+      const beforeMoves = Number(gameDoc().getElementById('movesVal').textContent);
+      const beforeState = getBoardMatrix();
+      const beforeA = beforeState[pair.r1][pair.c1]?.id;
+      const beforeB = beforeState[pair.r2][pair.c2]?.id;
+
+      clickPiece(first);
+      clickPiece(second);
+
+      await sleep(900);
+
+      const afterMoves = Number(gameDoc().getElementById('movesVal').textContent);
+      if (afterMoves !== beforeMoves) {
+        throw new Error(`Invalid swap should not spend a move (before=${beforeMoves}, after=${afterMoves})`);
+      }
+
+      const afterState = getBoardMatrix();
+      const afterA = afterState[pair.r1][pair.c1]?.id;
+      const afterB = afterState[pair.r2][pair.c2]?.id;
+
+      if (beforeA !== afterA || beforeB !== afterB) {
+        throw new Error('Invalid adjacent swap did not revert correctly');
+      }
+
+      return 'Invalid adjacent swap was rejected and board reverted';
+    }
+
+    async function runGravityAndFillTest() {
+      if (typeof gameWin().init === 'function') gameWin().init();
+      await sleep(120);
+
+      const pair = findAdjacentPair(true);
+      if (!pair) {
+        throw new Error('No valid swap found for gravity/cascade test');
+      }
+
+      const before = getBoardMatrix();
+      const beforeBoardCells = JSON.stringify(before);
+
+      const first = getPiece(pair.r1, pair.c1);
+      const second = getPiece(pair.r2, pair.c2);
+      if (!first || !second) {
+        throw new Error('Could not read board pieces for gravity test');
+      }
+
+      clickPiece(first);
+      clickPiece(second);
+
+      await sleep(2400);
+
+      const after = getBoardMatrix();
+      const pieces = gameDoc().querySelectorAll('.candy');
+      if (pieces.length !== SIZE * SIZE) {
+        throw new Error(`Board should contain ${SIZE * SIZE} candies after gravity; found ${pieces.length}`);
+      }
+
+      const seen = new Set();
+      let full = true;
+      for (let row = 0; row < SIZE; row++) {
+        for (let col = 0; col < SIZE; col++) {
+          const cell = after[row][col];
+          if (!cell || !cell.id) {
+            full = false;
+            break;
+          }
+          if (seen.has(cell.id)) {
+            throw new Error(`Duplicate piece id detected: ${cell.id}`);
+          }
+          seen.add(cell.id);
+        }
+        if (!full) break;
+      }
+
+      if (!full) {
+        throw new Error('Gravity left at least one missing board cell');
+      }
+
+      if (JSON.stringify(after) === beforeBoardCells) {
+        throw new Error('Board state did not change after match/gravity sequence');
+      }
+
+      return 'Gravity filled the board and maintained a full 9x9 grid after a match';
+    }
+
+    async function runNoFreezeTest() {
+      if (typeof gameWin().init === 'function') gameWin().init();
+      await sleep(120);
+
+      const errors = [];
+      gameWin().addEventListener('error', evt => {
+        errors.push(String(evt.message || evt.error || evt.type));
+      });
+
+      for (let i = 0; i < 4; i++) {
+        const pair = findAdjacentPair(true);
+        if (!pair) {
+          throw new Error('No valid adjacent swap found during repeated move check');
+        }
+
+        const first = getPiece(pair.r1, pair.c1);
+        const second = getPiece(pair.r2, pair.c2);
+        if (!first || !second) {
+          throw new Error('Board piece missing during repeated move check');
+        }
+
+        clickPiece(first);
+        clickPiece(second);
+        await sleep(1600);
+
+        if (errors.length) {
+          throw new Error(`JS error during play: ${errors.join('; ')}`);
+        }
+      }
+
+      return 'Multiple moves executed without lockups or runtime errors';
+    }
+
+    async function runTests() {
+      await waitFor(() => gameDoc().querySelectorAll('.candy').length === SIZE * SIZE, 4000);
+
+      const tests = [
+        ['Swap adjacent candies', runValidSwapTest],
+        ['Invalid swap reverts', runInvalidSwapTest],
+        ['Gravity fills board after match', runGravityAndFillTest],
+        ['No freeze after repeated moves', runNoFreezeTest]
+      ];
+
+      for (const [name, fn] of tests) {
+        try {
+          const detail = await fn();
+          logResult(name, true, detail);
+          pending.push({ name, ok: true, detail });
+        } catch (err) {
+          logResult(name, false, err?.message || String(err));
+          pending.push({ name, ok: false, detail: err?.message || String(err) });
+        }
+      }
+    }
+
+    frame.addEventListener('load', runTests);
+  </script>
+</body>
+</html>

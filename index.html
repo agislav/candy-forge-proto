@@ -346,6 +346,10 @@
 
     let rafHandle = 0;
 
+    function inBounds(row, col) {
+      return row >= 0 && row < SIZE && col >= 0 && col < SIZE;
+    }
+
     function randType() {
       return Math.floor(Math.random() * CANDY_TYPES.length);
     }
@@ -414,10 +418,19 @@
     }
 
     function movePieceTo(piece, targetRow, targetCol, duration = 0) {
+      if (!piece || !inBounds(targetRow, targetCol)) return Promise.resolve();
+
+      const toCol = targetCol;
+      const toRow = targetRow;
+      if (piece.x === toCol && piece.y === toRow && piece.row === toRow && piece.col === toCol) {
+        piece.moving = false;
+        return Promise.resolve();
+      }
+
       piece.fromX = piece.x;
       piece.fromY = piece.y;
-      piece.toX = targetCol;
-      piece.toY = targetRow;
+      piece.toX = toCol;
+      piece.toY = toRow;
       piece.startTime = performance.now();
       piece.duration = Math.max(duration, 1);
       piece.moving = true;
@@ -432,12 +445,11 @@
       });
     }
 
-    async function waitForIdle() {
-      let guard = 0;
-      while (guard < 420) {
+    async function waitForIdle(maxWaitMs = 2500) {
+      const started = performance.now();
+      while (true) {
         const stillMoving = pieces.some(piece => piece.moving || piece.matchPending);
-        if (!stillMoving) return;
-        guard += 1;
+        if (!stillMoving || (performance.now() - started) >= maxWaitMs) return;
         await nextFrame();
       }
     }
@@ -601,6 +613,7 @@
           grid[row][col] = null;
         }
         piece.el.remove();
+        pieceById.delete(piece.id);
         piece.matchPending = false;
       }
 
@@ -644,9 +657,7 @@
           setTransform(piece);
           updatePieceCellData(piece, rr, c);
           grid[rr][c] = piece;
-          piece.moving = false;
           movePieceTo(piece, rr, c, FALL_DURATION);
-          piece.y = rr;
         }
       }
 
@@ -689,6 +700,11 @@
       movePieceTo(second, r1, c1, SWAP_DURATION);
     }
 
+    function isAdjacent(first, second) {
+      return Math.abs(Number(first.dataset.row) - Number(second.dataset.row))
+        + Math.abs(Number(first.dataset.col) - Number(second.dataset.col)) === 1;
+    }
+
     async function attemptSwap(targetPiece) {
       if (!selectedPiece || !targetPiece || gameOver || isAnimating) return;
       const r1 = Number(selectedPiece.dataset.row);
@@ -703,8 +719,7 @@
         return;
       }
 
-      const dist = Math.abs(r1 - r2) + Math.abs(c1 - c2);
-      if (dist !== 1) {
+      if (!isAdjacent(selectedPiece, targetPiece)) {
         selectedPiece.classList.remove('selected');
         selectedPiece = null;
         targetPiece.classList.add('selected');
@@ -715,34 +730,34 @@
       isAnimating = true;
       selectedPiece.classList.remove('selected');
 
-      // Swap forward
-      swapInGrid(r1, c1, r2, c2);
-      await waitForIdle();
-
-      const hasMatch = findMatches().length > 0;
-
-      if (!hasMatch) {
-        // Swap back (reverse)
-        swapInGrid(r2, c2, r1, c1);
+      try {
+        // Swap forward
+        swapInGrid(r1, c1, r2, c2);
         await waitForIdle();
+
+        const hasMatch = findMatches().length > 0;
+
+        if (!hasMatch) {
+          // Swap back (reverse)
+          swapInGrid(r2, c2, r1, c1);
+          await waitForIdle();
+          return;
+        }
+
+        movesLeft = Math.max(0, movesLeft - 1);
+        updateHud();
+        await resolveMatches();
+
+        if (movesLeft <= 0) {
+          localStorage.setItem(STORAGE_KEY, String(highScore));
+          gameOver = true;
+          finalScoreEl.textContent = `Final Score: ${score}`;
+          overlay.classList.add('overlay-visible');
+        }
+      } finally {
         isAnimating = false;
         selectedPiece = null;
-        return;
       }
-
-      movesLeft = Math.max(0, movesLeft - 1);
-      updateHud();
-      await resolveMatches();
-
-      if (movesLeft <= 0) {
-        localStorage.setItem(STORAGE_KEY, String(highScore));
-        gameOver = true;
-        finalScoreEl.textContent = `Final Score: ${score}`;
-        overlay.classList.add('overlay-visible');
-      }
-
-      isAnimating = false;
-      selectedPiece = null;
     }
 
     function onBoardPointerDown(event) {
